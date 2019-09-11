@@ -1,3 +1,6 @@
+############# warning: to update with new models metrics
+
+
 '''
 loads and perform prediction with pre-trained HAN (hierachical attention network, specialized neural net for NLP tasks) models
 Authors: Loic Verlingue, Enrico Sartor, Valentin Charvet, Hichem Aloui
