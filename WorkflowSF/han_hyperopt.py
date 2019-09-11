@@ -1,19 +1,22 @@
 ##
-# to check: 
-# "Save the best model" line 266 : is all oK?
-# the custom metrics scores in CV
-
-# Authors: Loic Verlingue, Enrico Sartor, Valentin Charvet
+# Yang, Zichao, et al. "Hierarchical attention networks for document classification."
+# Proceedings of the 2016 Conference of the North American Chapter of the Association
+# for Computational Linguistics: Human Language Technologies. 2016.
+#
+# Code inspired from: FlorisHoogenboom.
+# https://github.com/FlorisHoogenboom/keras-han-for-docla
+#
+# Authors: Enrico Sartor, Loic Verlingue
+##
 
 ################
 # directories
 ################
-out_file = 'HAN_30epoch10eval'
+out_file = 'HAN_100epoch'
 data_dir="data/"
 results_dir="results/"
 scripts_dir="scripts/"
 print(out_file)
-
 #################
 # hyperparameters
 #################
@@ -26,8 +29,8 @@ sentence_encoding_dim=256
 l1=0
 l2=0
 dropout=0.2
-MAX_EVALS = 10 # number of models to evaluate with hyperopt
-Nepochs = 30
+MAX_EVALS = 3 # number of models to evaluate with hyperopt
+Nepochs = 100
 
 # import matplotlib
 # matplotlib.use('agg')
@@ -68,7 +71,7 @@ import pickle # to save and load keras tokeniser
 os.chdir(scripts_dir)
 from han_model import HAN
 from han_model import AttentionLayer
-from utils import rec_scorer, f1_scorer, f2_scorer
+#from utils import rec_scorer, f1_scorer, f2_scorer
 os.chdir(results_dir)
 
 ##############################################################################
@@ -170,6 +173,7 @@ logger.info(
 
 # Load the embeddings from a file
 embeddings = {}
+# r'C:\Users\Enrico\Desktop\Projet Innovation\
 
 with open(os.path.join(data_dir, "w2v_reports_128.vec"),
           encoding='utf-8') as file:  # imdb_w2v.txt . w2v_reports_128.vec
@@ -229,34 +233,62 @@ def create_model(params):
 
     opt = Adam(lr=lr)
 
+    #han_model.compile(optimizer=opt, loss='binary_crossentropy',
+    #                  metrics=['acc', rec_scorer, f1_scorer, f2_scorer])
     han_model.compile(optimizer=opt, loss='binary_crossentropy',
-                      metrics=['acc', rec_scorer, f1_scorer, f2_scorer])
+                      metrics=['acc'])
 
+    # print(han_model.metrics_names)
+    # es = EarlyStopping(monitor='val_loss', mode='min', patience = 5, verbose=1)
+    # mc = ModelCheckpoint('best_HAN.h5', monitor='val_acc', mode='max', verbose=1, save_best_only=True)
+    # up here 'best_HAN_'+str(i)+'.h5'
+    #scores = 1, 2, 3, 4, 5
+    #scores = pd.DataFrame(scores)
     han_model.fit(X_train, y_train, validation_split=0, batch_size=8,
                   epochs=Nepochs)  # ,callbacks=[es, mc])
 
+    '''
     scores = han_model.evaluate(X_val, y_val, verbose=0)
 
     #f2 = scores[4]
     f1 = scores[3]
     #rec = scores[2]
-    #accuracy = scores[1]
+    accuracy = scores[1]
     loss = scores[0]
+    '''
     
+    ### metrics
+    scores1 = han_model.evaluate(X_val, y_val, verbose=0)
     
-    # build and save results and parameters
-    df_scores=pd.DataFrame([scores],columns=('loss','accuracy','recall','f1','f2'))
+    y_pred_num = han_model.predict(X_val)
+       
+    y_pred_bin=(y_pred_num>0.5)*1
+    
+    scores=classification_report(y_val,y_pred_bin,output_dict=True)
+    scores=scores['weighted avg']
+    scores['loss']=scores1[0]
+    scores['accuracy']=scores1[1]
+    
+    df_scores=pd.DataFrame([scores])
       
     df_params=pd.DataFrame.from_dict([params])
-  
+    #print(df_params.__class__)
+
     df_new=df_scores.join(df_params)
     
+    #print(df_new.__class__)
+
+    #try:
     df_results=pd.read_csv(os.path.join(results_dir, out_file+'all.csv'))
     df_results=df_results.append(df_new)
     df_results.to_csv(os.path.join(results_dir, out_file+'all.csv'), index=False)
+    #except NameError:
+    #    df_results=df_new
+    #    df_results.to_csv(os.path.join(results_dir, out_file+'all.csv'))
+    
    
     # Save the best model
-    if f1 <= df_results['f1'].max():
+    if f1 <= df_results['accuracy'].max():
         # han_model.save("han_model.hd5")
         print("Save model")
         han_model.save(os.path.join(results_dir, out_file+'_model.hd5'))
@@ -265,9 +297,9 @@ def create_model(params):
 
 
 space = {
-    'l2': hp.qloguniform('l2', np.log(0.00001), np.log(0.01), 0.00001),
+    'l2': hp.qloguniform('l2', np.log(0.0001), np.log(0.01), 0.0001),
     'dropout': hp.quniform('dropout', 0, 0.5, 0.2),
-    'lr': hp.qloguniform('lr', np.log(0.00001),  np.log(0.05), 0.00001)
+    'lr': hp.qloguniform('lr', np.log(0.0001),  np.log(0.05), 0.0001)
 }
 
 
@@ -289,4 +321,6 @@ best = fmin(fn=create_model, space=space, algo=tpe.suggest, max_evals=MAX_EVALS,
 
 print(best)
 logger.info('END')
+
+#han_model.save(os.path.join(results_dir, out_file+'.hd5'))
 
