@@ -13,7 +13,7 @@ Script to use after hyperopt training for hyperparameter search.
 ################
 # directories
 ################
-out_file = 'HAN_30epoch10eval'
+out_file = 'HAN_100epoch'
 data_dir="data/"
 results_dir="results/"
 scripts_dir="scripts/"
@@ -35,6 +35,7 @@ from keras.preprocessing.sequence import pad_sequences
 from keras.optimizers import Adam
 from keras.layers import Dropout
 from keras import metrics
+from keras.callbacks import ModelCheckpoint
 
 #from keras.callbacks import ModelCheckpoint, EarlyStopping
 from keras.utils import to_categorical
@@ -71,15 +72,15 @@ import pickle
 os.chdir(scripts_dir)
 from han_model import HAN
 from han_model import AttentionLayer
-from utils import rec_scorer, f1_scorer, f2_scorer
+#from utils import rec_scorer, f1_scorer, f2_scorer
 os.chdir(results_dir)
 
 #################
 # hyperparameters
 #################
 trained_params=pd.read_csv(os.path.join(results_dir, out_file+"all.csv"), encoding='utf-8') # check
-##trained_params=pd.DataFrame({'l1':[0.1,0.3],'l2':[0.2,0.1],'f1':[0.9,0.96]})
-trained_params=trained_params[trained_params['f1']==trained_params['f1'].max()]
+
+trained_params=trained_params[trained_params['f1-score']==trained_params['f1-score'].max()]
 
 params={
         'MAX_WORDS_PER_SENT' : 40,
@@ -96,7 +97,7 @@ params={
         'lr':0.001
         }
 
-hp_names=trained_params.columns.values[trained_params.columns.values!='f1']
+hp_names=trained_params.columns.values[trained_params.columns.values!='f1-score']
 
 for key in hp_names:
     params[key]=trained_params[key].iloc[0]
@@ -166,7 +167,6 @@ for i, review in enumerate(texts):
     # the data matrix
     X[i] = tokenized_sentences[None, ...]
 
-
 # select the test cohort
 X_train,X_test = X[df_all['Cohort']!='Test'], X[df_all['Cohort']=='Test']
 y_train, y_test = y[df_all['Cohort']!='Test'], y[df_all['Cohort']=='Test']
@@ -230,12 +230,13 @@ han_model.summary()
 #### or load model
 print("loadmodel")
 han_model = load_model(os.path.join(results_dir,out_file+'_model.hd5'), 
-                       custom_objects={'HAN': HAN,'AttentionLayer': AttentionLayer, 
-                                       'rec_scorer':rec_scorer, 'f1_scorer':f1_scorer, 
-                                       'f2_scorer':f2_scorer})
-
+                       custom_objects={'HAN': HAN,'AttentionLayer': AttentionLayer})
+#,'rec_scorer':rec_scorer, 'f1_scorer':f1_scorer,  'f2_scorer':f2_scorer
 han_model.summary()
 
+
+'''
+# if you want to fine tunne the training, do:
 print("compile")
 ################################
 # optionaly train / finetune it
@@ -244,21 +245,30 @@ han_model.compile(
     metrics=['acc']
 )
 
+print("train")
 
-"""
-checkpoint_saver = ModelCheckpoint(
-    filepath='./tmp/model.{epoch:02d}-{val_loss:.2f}.hdf5',
-    verbose=1, save_best_only=True
-)
+filepath=os.path.join(results_dir,out_file+'checkpoints-{epoch:02d}-{val_acc:.2f}.hdf5')
+checkpoint = ModelCheckpoint(filepath, monitor='val_acc', verbose=1, save_best_only=True, mode='max')
+callbacks_list = [checkpoint]
+
+#model.fit(X, Y, validation_split=0.33, epochs=150, batch_size=10, callbacks=callbacks_list, verbose=0)
+
+history=han_model.fit(X_train, y_train, validation_split=0.1, batch_size=8,
+                  epochs=params['Nepochs'], callbacks=callbacks_list, verbose=0) 
 """
 print("train")
 history=han_model.fit(X_train, y_train, validation_split=0.1, batch_size=8,
                   epochs=params['Nepochs']) 
- 
+"""
 han_model.save(os.path.join(results_dir, out_file+'_finetuned_model.hd5'))
+'''
+ 
+han_model.save(os.path.join(results_dir, out_file+'_best_model.hd5'))
  
 ################################
 # check results
+
+#y_pred_num = han_model.evaluate(X_test)
 
 y_pred_num = han_model.predict(X_test)
 
@@ -306,6 +316,9 @@ plt.savefig(os.path.join(results_dir,out_file+'_finetuned_ROC.pdf'))
 # Confusion Matrix - Test data
 # bianrize
 
+y_pred_bin=(y_pred_num>0.5)*1
+
+'''
 threshold = 0.5
 
 for i in range(len(y_pred_num)):
@@ -313,10 +326,10 @@ for i in range(len(y_pred_num)):
         y_pred_num[i]=0
     else:
         y_pred_num[i]=1
-        
+'''       
 
 # Using metrics.confusion_matrix function
-cm = confusion_matrix(y_test, y_pred_num)
+cm = confusion_matrix(y_test, y_pred_bin)
 data = cm.tolist()
 print("cm returned from sklearn:", data)
 
@@ -334,8 +347,10 @@ fig = sns_plot.get_figure()
 fig.savefig(os.path.join(results_dir,out_file+'_finetuned_cm.pdf'))
 
 # save metrics
-report=classification_report(y_test,y_pred_num,output_dict=True)
+report=classification_report(y_test,y_pred_bin,output_dict=True)
 report=report['weighted avg']
+acc= accuracy_score(y_test,y_pred_bin)
+report['acc']=acc
 report['average_precision']=average_precision
 report['auc']=roc_auc
 
