@@ -2,9 +2,9 @@
 
 ### directories
 out_file = 'HAN_choffe_256_generator'
-data_dir="/mnt/beegfs/scratch/l_verlingue/NLP/CondaCloneWrkFlow/data/"
-results_dir="/mnt/beegfs/scratch/l_verlingue/NLP/CondaCloneWrkFlow/results/"
-scripts_dir="/mnt/beegfs/scratch/l_verlingue/NLP/CondaCloneWrkFlow/scripts/m_choffe_HAN/"
+data_dir="data/"
+results_dir="results/"
+scripts_dir="."
 
 print("welcome to", out_file)
 
@@ -50,10 +50,8 @@ params = {
     'Nepochs' : 5,
     'lr':0.001,
     #'batch_size' : 100,
-    'Nbatches': 512,  #Number of smaller batches for pretraining
+    'Nbatches': 256,  #Number of smaller batches for pretraining
 }
-
-#max_evals=5
 
 
 #####################
